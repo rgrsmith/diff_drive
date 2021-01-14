@@ -6,6 +6,7 @@ from geometry_msgs.msg import Twist
 from std_msgs.msg import Int32
 
 from diff_drive import controller
+from roboclaw_driver.msg import SpeedCommand
 
 class ControllerNode:
 
@@ -20,6 +21,8 @@ class ControllerNode:
         self.rightPub = rospy.Publisher('rwheel_desired_rate',
                                         Int32, queue_size=1)
 
+        self.roboPub = rospy.Publisher('/roboclaw/speed_command', SpeedCommand, queue_size=1)
+
         rospy.init_node('diff_drive_controller')
         self.nodeName = rospy.get_name()
         rospy.loginfo("{0} started".format(self.nodeName))
@@ -31,6 +34,9 @@ class ControllerNode:
         self.maxMotorSpeed = int(rospy.get_param('~max_motor_speed'))
         self.rate = float(rospy.get_param('~rate', 10.0))
         self.timeout = float(rospy.get_param('~timeout', 0.2))
+        self.robo_speeds = SpeedCommand()
+        self.robo_speeds.accel = 3000000
+        self.robo_speeds.max_secs = 1
 
         self.controller.setWheelSeparation(self.wheelSeparation)
         self.controller.setTicksPerMeter(self.ticksPerMeter)
@@ -48,9 +54,16 @@ class ControllerNode:
                                                self.angularVelocity)
             self.leftPub.publish(int(speeds.left))
             self.rightPub.publish(int(speeds.right))
+            self.robo_speeds.m1_qpps = int(speeds.left)
+            self.robo_speeds.m2_qpps = int(speeds.right)
+            self.roboPub.publish(self.robo_speeds)
         else:
             self.leftPub.publish(0)
             self.rightPub.publish(0)
+            self.robo_speeds.m1_qpps = 0
+            self.robo_speeds.m2_qpps = 0
+            self.roboPub.publish(self.robo_speeds)
+
 
     def twistCallback(self, twist):
         self.linearVelocity = twist.linear.x

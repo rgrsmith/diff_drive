@@ -10,6 +10,7 @@ find_package(catkin REQUIRED COMPONENTS
   tf2
   actionlib
   actionlib_msgs
+  roboclaw_driver
 )
 
 add_action_files(
