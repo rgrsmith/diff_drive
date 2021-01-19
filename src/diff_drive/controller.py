@@ -27,8 +27,8 @@ class Controller:
         speeds.right = tickRate + diffTicks
 
         # Adjust speeds if they exceed the maximum.
-        if max(speeds.left, speeds.right) > self.maxMotorSpeed:
-            factor = self.maxMotorSpeed / max(speeds.left, speeds.right)
+        if abs(max(speeds.left, speeds.right)) > self.maxMotorSpeed:
+            factor = self.maxMotorSpeed / abs(max(speeds.left, speeds.right))
             speeds.left *= factor
             speeds.right *= factor
 
