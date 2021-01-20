@@ -6,6 +6,7 @@ from geometry_msgs.msg import Quaternion
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from std_msgs.msg import Int32
+from sensor_msgs.msg import JointState
 from roboclaw_driver.msg import Stats
 from geometry_msgs.msg import PoseWithCovarianceStamped
 from tf.broadcaster import TransformBroadcaster
@@ -23,6 +24,7 @@ class OdometryNode:
 
     def main(self):
         self.odomPub = rospy.Publisher('odom', Odometry, queue_size=10)
+        self.jointStatePub = rospy.Publisher('/joint_states_wheels', JointState, queue_size=10)
         self.tfPub = TransformBroadcaster()
 
         rospy.init_node('diff_drive_odometry')
@@ -95,27 +97,37 @@ class OdometryNode:
         rospy.loginfo('Setting initial pose to %s', pose)
         self.odometry.setPose(pose)
 
+    def tickToRad(self, tick):
+        return tick / (256*512) * 2 * 3.14159
+
+    def sendWheelStates(self): # Only called when both callbacks have updated (potential issue with timing mismatches??)
+        _l_tick_avg = (self.tick_aggregate[0][0] + self.tick_aggregate[1][0]) / 2
+        _r_tick_avg = (self.tick_aggregate[0][1] + self.tick_aggregate[1][1]) / 2
+        self.odometry.updateLeftWheel(_l_tick_avg)
+        self.odometry.updateRightWheel(_r_tick_avg)
+        self.have_aggregate = [False, False]
+        # print("Tick Avgs: %s\t%s" % (_l_tick_avg, _r_tick_avg))
+        # Update Joint states too
+        jointStates = JointState()
+        jointStates.header.stamp = rospy.Time.now()
+        jointStates.name = ['ps_wheel_joint', 'pf_wheel_joint', 'sf_wheel_joint', 'ss_wheel_joint']
+        jointStates.position = [-self.tickToRad(self.tick_aggregate[1][0]), \
+                                -self.tickToRad(self.tick_aggregate[0][0]), \
+                                self.tickToRad(self.tick_aggregate[0][1]), \
+                                self.tickToRad(self.tick_aggregate[1][1])] # Note: tick aggregate order is [front/back][L/R], but naming is [port/starboard][fore,stern]
+        self.jointStatePub.publish(jointStates)
+
     def frontCallback(self, msg):
         self.have_aggregate[0] = True
 	self.tick_aggregate[0] = [msg.m1_enc_val, msg.m2_enc_val]
 	if self.have_aggregate[0] and self.have_aggregate[1]:
-            _l_tick_avg = (self.tick_aggregate[0][0] + self.tick_aggregate[1][0]) / 2
-            _r_tick_avg = (self.tick_aggregate[0][1] + self.tick_aggregate[1][1]) / 2
-            self.odometry.updateLeftWheel(_l_tick_avg)
-            self.odometry.updateRightWheel(_r_tick_avg)
-            self.have_aggregate = [False, False]
-            # print("Tick Avgs: %s\t%s" % (_l_tick_avg, _r_tick_avg))
+            self.sendWheelStates()
 
     def rearCallback(self, msg):
         self.have_aggregate[1] = True
         self.tick_aggregate[1] = [msg.m1_enc_val, msg.m2_enc_val]
         if self.have_aggregate[0] and self.have_aggregate[1]:
-            _l_tick_avg = (self.tick_aggregate[0][0] + self.tick_aggregate[1][0]) / 2
-            _r_tick_avg = (self.tick_aggregate[0][1] + self.tick_aggregate[1][1]) / 2
-            self.odometry.updateLeftWheel(_l_tick_avg)
-            self.odometry.updateRightWheel(_r_tick_avg)
-       	    self.have_aggregate	= [False, False]
-            # print("Tick Avgs: %s\t%s" % (_l_tick_avg, _r_tick_avg))
+            self.sendWheelStates()
 
 if __name__ == '__main__':
     try:
